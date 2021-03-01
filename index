@@ -1,0 +1,587 @@
+
+<!doctype><html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Odyssey.js Slides</title>
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="icon" type="image/x-icon" href="http://cartodb.github.io/odyssey.js/sandbox/favicon.png">
+  <link rel="icon" type="image/png" href="http://cartodb.github.io/odyssey.js/sandbox/favicon.png">
+
+  <link rel="stylesheet" href="http://cartodb-libs.global.ssl.fastly.net/cartodb.js/v3/themes/css/cartodb.css">
+  <link rel="stylesheet" href="http://cartodb.github.io/odyssey.js/sandbox/css/slides.css">
+  <script src="http://cartodb.github.io/odyssey.js/vendor/modernizr-2.6.2.min.js"></script>
+</head>
+<body>
+  <div id="map" style="width: 100%; height: 100%;"></div>
+
+  <div id="slides_container" style="display: block; color: #FFFFFF; background-image: url(white.png)">
+    <div id="dots"></div>
+
+    <div id="slides"></div>
+
+    <ul id="navButtons">
+      <li><a class="prev"></a></li>
+      <li><a class="next"></a></li>
+    </ul>
+
+  </div>
+<div class="fltlft">
+  <div id="apDiv2"><img src="publicspace.png" width="1557" height="856" alt="publicspace" />
+ </div>
+ 
+  <div id="credits">
+    <span class="title" id="title">Title</span>
+    <span class="author"><strong id="author">By Name using</strong> <a href="http://cartodb.github.io/odyssey.js/">Odyssey.js</a><span>
+  </span></span></div>
+
+  <script src="http://cartodb-libs.global.ssl.fastly.net/cartodb.js/v3/cartodb.js"></script>
+  <script src="http://cartodb.github.io/odyssey.js/dist/odyssey.js" charset="UTF-8"></script>
+
+  <script>
+    var resizePID;
+
+    function clearResize() {
+      clearTimeout(resizePID);
+      resizePID = setTimeout(function() { adjustSlides(); }, 100);
+    }
+
+    if (!window.addEventListener) {
+      window.attachEvent("resize", function load(event) {
+        clearResize();
+      });
+    } else {
+      window.addEventListener("resize", function load(event) {
+        clearResize();
+      });
+    }
+
+    function adjustSlides() {
+      var container = document.getElementById("slides_container"),
+          slide = document.querySelectorAll('.selected_slide')[0];
+
+      if (slide) {
+        if (slide.offsetHeight+169+40+80 >= window.innerHeight) {
+          container.style.bottom = "80px";
+
+          var h = container.offsetHeight;
+
+          slide.style.height = h-169+"px";
+          slide.classList.add("scrolled");
+        } else {
+          container.style.bottom = "auto";
+          container.style.minHeight = "0";
+
+          slide.style.height = "auto";
+          slide.classList.remove("scrolled");
+        }
+      }
+    }
+
+    var resizeAction = O.Action(function() {
+      function imageLoaded() {
+        counter--;
+
+        if (counter === 0) {
+          adjustSlides();
+        }
+      }
+      var images = $('img');
+      var counter = images.length;
+
+      images.each(function() {
+        if (this.complete) {
+          imageLoaded.call( this );
+        } else {
+          $(this).one('load', imageLoaded);
+        }
+      });
+    });
+
+    function click(el) {
+      var element = O.Core.getElement(el);
+      var t = O.Trigger();
+
+      // TODO: clean properly
+      function click() {
+        t.trigger();
+      }
+
+      if (element) element.onclick = click;
+
+      return t;
+    }
+
+    O.Template({
+      init: function() {
+        var seq = O.Triggers.Sequential();
+
+        var baseurl = this.baseurl = 'http://tile.stamen.com/toner/{z}/{x}/{y}.jpg';
+		        var vizjson = 'https://ampitup.cartodb.com/api/v2/viz/bfd32e56-98ff-11e4-8547-0e9d821ea90d/viz.json'
+        var map = this.map = L.map('map').setView([37.7642, -122.4409], 13);
+        var basemap = this.basemap = L.tileLayer(baseurl, {
+          attribution: 'data OSM - map CartoDB'
+        }).addTo(map);
+		
+    cartodb.createLayer(this.map, vizjson, {infowindow: false})
+    .addTo(this.map);
+			   
+        // enanle keys to move
+        O.Keys().on('map').left().then(seq.prev, seq)
+        O.Keys().on('map').right().then(seq.next, seq)
+
+        click(document.querySelectorAll('.next')).then(seq.next, seq)
+        click(document.querySelectorAll('.prev')).then(seq.prev, seq)
+
+        var slides = O.Actions.Slides('slides');
+        var story = O.Story()
+
+        this.story = story;
+        this.seq = seq;
+        this.slides = slides;
+        this.progress = O.UI.DotProgress('dots').count(0);
+      },
+
+      update: function(actions) {
+        var self = this;
+
+        if (!actions.length) return;
+
+        this.story.clear();
+
+        if (this.baseurl && (this.baseurl !== actions.global.baseurl)) {
+          this.baseurl = actions.global.baseurl || 'http://tile.stamen.com/toner/{z}/{x}/{y}.jpg';
+
+          this.basemap.setUrl(this.baseurl);
+        }
+
+        if (this.cartoDBLayer && ("http://"+self.cartoDBLayer.options.user_name+".cartodb.com/api/v2/viz/"+self.cartoDBLayer.options.layer_definition.stat_tag+"/viz.json" !== actions.global.vizjson)) {
+          this.map.removeLayer(this.cartoDBLayer);
+
+          this.cartoDBLayer = null;
+          this.created = false;
+        }
+
+        if (actions.global.vizjson && !this.cartoDBLayer) {
+          if (!this.created) { // sendCode debounce < vis loader
+            cdb.vis.Loader.get(actions.global.vizjson, function(vizjson) {
+              self.map.fitBounds(vizjson.bounds);
+
+              cartodb.createLayer(self.map, vizjson)
+        .done(function(vis, layers) {
+          var map = vis.getNativeMap();
+          var sublayer = layers[1].getSubLayer(3);
+		  
+                  var sublayer = layer.getSubLayer(0),
+                      layer_name = layer.layers[0].options.layer_name,
+                      filter = actions.global.cartodb_filter ? " WHERE "+actions.global.cartodb_filter : "";
+			
+                  sublayer.setSQL("SELECT * FROM "+layer_name+filter)
+
+                  self.map.addLayer(layer);
+
+                  self._resetActions(actions);
+                }).on('error', function(err) {
+                  console.log("some error occurred: " + err);
+                });
+            });
+
+            this.created = true;
+          }
+
+          return;
+        }
+
+        this._resetActions(actions);
+      },
+
+      _resetActions: function(actions) {
+        // update footer title and author
+        var title_ = actions.global.title === undefined ? '' : actions.global.title,
+            author_ = actions.global.author === undefined ? 'Using' : 'By '+actions.global.author+' using';
+
+        document.getElementById('title').innerHTML = title_;
+        document.getElementById('author').innerHTML = author_;
+        document.title = title_ + " | " + author_ +' Odyssey.js';
+
+        var sl = actions;
+
+        document.getElementById('slides').innerHTML = ''
+        this.progress.count(sl.length);
+
+        // create new story
+        for(var i = 0; i < sl.length; ++i) {
+          var slide = sl[i];
+          var tmpl = "<div class='slide' style='diplay:none'>";
+
+          tmpl += slide.html();
+          tmpl += "</div>";
+          document.getElementById('slides').innerHTML += tmpl;
+
+          this.progress.step(i).then(this.seq.step(i), this.seq)
+
+          var actions = O.Parallel(
+            this.slides.activate(i),
+            slide(this),
+            this.progress.activate(i),
+            resizeAction
+          );
+
+          actions.on("finish.app", function() {
+            adjustSlides();
+          });
+
+          this.story.addState(
+            this.seq.step(i),
+            actions
+          )
+        }
+
+        this.story.go(this.seq.current());
+      },
+
+      changeSlide: function(n) {
+        this.seq.current(n);
+      }
+    });
+  </script>
+
+
+
+  <script>
+    (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+    (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+    m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+    })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+    ga('create', 'UA-20934186-21', 'cartodb.github.io');
+    ga('send', 'pageview');
+  </script>
+
+<script type="text/template" id="md_template">```
+-title: "San Francisco For Sale"
+-author: "Anti-Eviction Mapping Project"
+-baseurl:  "http://tile.stamen.com/toner/{z}/{x}/{y}.jpg"
+-vizjson: "https://ampitup.cartodb.com/api/v2/viz/bfd32e56-98ff-11e4-8547-0e9d821ea90d/viz.json" "!important"
+```
+
+#SAN FRANCISCO FOR SALE
+
+```
+- center: [37.7642, -122.4809]
+- zoom: 13
+```
+USE THE ARROWS BELOW TO MOVE THROUGH PUBLIC SPACES
+
+Like many cities across the country, San Francisco is undergoing a dramatic transformation driven by private interests.  The logic of privatization has crept into city planning strategies and accelerated the erosion of public space. From parks and plazas to streets and sidewalks, the transition from public to private management and ownership envelops us, threatening our freedom of movement, freedom of expression and freedom of recreation in natural spaces. 
+
+Anti-Eviction Mapping Project has highlighted this process by visualizing San Francisco’s publicly owned spaces. Search on the map for publicly owned buildings, lots and parks (amber colored), and see the actual boundaries of publicly owned streets. Also find POPOS (privately owned public open spaces), libraries, rec centers, and public schools.
+
+Community includes common space; the attack on our commons continues to erode and displace our community.  By reclaiming and using public resources, our community is strengthened.
+
+#MISSION PLAYGROUND
+```
+L.marker([37.7486956,-122.4150619]).actions.addRemove(S.map)
+- center: [37.7486956,-122.4150619]
+- zoom: 14
+```
+Valencia and 19th
+
+![Altercation with Dropbox and Airbnb Dudes](http://www.newyorker.com/wp-content/uploads/2014/10/Wong-SF-Playgrounds-1200.jpg)
+
+In 2006, a [deal](https://www.citizenaudit.org/203068987/) was sealed between the City and County of San Francisco and the City Fields Foundation granting the foundation use of public lands for a series of construction projects of [styrene butadiene (SBR) synthetic athletic fields](http://www.alternet.org/environment/your-athletic-field-killer), as well as control and management of the permitting process for athletic fields.
+
+The City Fields Foundation - a project of the billionaire Fisher brothers, along with financial advisor, campaign consultant and lobbyist Susan Hirsch - managed the rehab of parks all over the City and instituted a new permitting system.  By 2007, concerned citizens [began to question aspects of the program](http://qwrt4.weebly.com/blog-scroll/2). This did not stop the ongoing privatization effort. In 2009, Mayor Newsom appointed his former Chief of Staff, attorney Phil Ginsburg as the director of SFRP. [Monetization in place of public access and new usage policies ensued](https://medium.com/@TheLeagueSF/mission-playground-shows-its-time-for-a-change-at-rec-and-park-d0f24436940). Park and Rec staff and City Fields Foundation ignored public complaints and [petitions against these policies](http://missionlocal.org/2012/10/petitioner-fights-pay-to-play-in-mission-soccer).
+
+Park and Recreation changed the permitting policy after this [video](https://www.youtube.com/watch?v=awPVY1DcupE) went viral, and co-opted the incident to state that it was indicative of a resource shortage, rather than the reality that City employees are doling out public resources to wealthy at the expense of the rest. Problems persist in parks across the City and with the “private/public partnership” model.
+Although the City Fields Foundation represents in their [990 filings](https://www.citizenaudit.org/203068987/) with the IRS that they do not engage in political campaigning or lobbying, it is interesting to note that the largest part of the City Fields Foundation budget (approximately ⅓ of the tax deductible revenues of the Foundation) in all years between 2010 and 2012 went to Susan Hirsch, a registered lobbyist with the City of San Francisco.  In 2010, Ms. Hirsch was paid $356,345; in 2011, she received $358,123; in 2012,  $338,433.  
+
+In addition to the theft of current community resources by privitization forces in City government, the disbursement of the Open Space Acquisition Fund for the creation of new Park and Recreation resources has been similarly [used to shift public resources for the use of the wealthy](http://www.sfexaminer.com/sanfrancisco/francisco-reservoir-plan-touches-on-san-francisco-parks-and-housing-issues/Content?oid=2816949).
+
+
+#PUBLIC BUS STOPS
+```
+L.marker([37.7787235,-122.4147796]).actions.addRemove(S.map)
+- center: [37.7787235,-122.4147796]
+- zoom: 14
+```
+8th and Market
+
+
+![Google Bus Blockade](http://homesmillbrae.com/wp-content/plugins/rss-poster/cache/90565_2014_0425hudson2.jpg)
+
+Since at least 2011, private tech companies have co-opted public bus stops, and until August 2014, with impunity.  Direct action and protests around the “handshake agreement”with City administrators brought international attention to the give-away, and the City responded with a tepid regulatory program. San Franciscans using these formerly publicly controlled spaces to park or drop someone off will receive a $271 ticket. The city’s response has ignored the “tech shuttle effect,” [in which 69% of no-fault evictions since 2011 have occurred within 4 blocks of the private tech bus stops.](http://www.antievictionmappingproject.net/techbusstops.html).
+
+#MISSION MIRACLE MILE
+```
+L.marker([37.755246,-122.418538]).actions.addRemove(S.map)
+- center: [37.755246,-122.418538]
+- zoom: 14
+```
+Mission Miracle Mile
+![Mission Miracle Mile](http://abecedariangallery.com/store/wp-content/uploads/D-Smith-Danas-Tours-4.jpg)
+
+As a mechanism of gentrification, [Community Benefits Districts](http://www.oewd.org/index.aspx?page=42) are allowed to over-lay public resources with a small group’s vision of public space. The Mission Miracle Mile is managed by [Phil Lesser](http://missionlocal.org/2012/03/the-man-behind-the-missions-hottest-restaurants/) out of the Vanguard Realty office at 2501 Mission, One of the projects was to put surveillance cameras everywhere on the block.  Phil Lesser is registered with the City as a [lobbyist](https://netfile.com/Sunlight/sf/Lobbyist/Details/2013/1/SFO-112424), and represents JCN Developers who have a project at [490 S Van Ness](http://missionlocal.org/2014/09/planning-commish-tunes-to-pops-delays-to-490-south-van-ness/) (at 16th).
+
+
+
+#PARKING METERS
+```
+L.marker([37.7651955,-122.4174623]).actions.addRemove(S.map)
+- center: [37.7651955,-122.4174623]
+- zoom: 14
+```
+16th at South Van Ness
+![16th at South Van Ness](http://www.48hills.org/wp-content/uploads/2015/02/48hillssanjosebusstopprotest.png)
+
+An SFMTA pilot program allows private tech buses to monopolize public parking meters during rush hour. The city can take any open, un-metered curb section and painted it white, creating a no-parking zone. Then the agency allocates that white zone exclusively to tech shuttles for four hours in the morning, depriving residents, [especially teachers’ parking spaces near schools](http://www.48hills.org/2015/02/11/teachers-protested-google-buses/). 
+
+
+#HAIGHT ASHBURY RECYCLING CENTER
+
+```
+L.marker([37.7656853,-122.4565347]).actions.addRemove(S.map)
+- center: [37.7656853,-122.4565347]
+- zoom: 14
+```
+Golden Gate Park
+![Recycling Center](http://ww2.hdnux.com/photos/07/02/11/1843793/11/920x920.jpg)
+
+In 2013, after a bitter, multi-year fight between a Haight Ashbury Neighborhood Council (HANC) and the SF Recs and Parks Department, it was determined that the recycling center bordering the Golden Gate Park would be shut down. What they ignored was that the center has long offered a place for homeless people to cash in money for cans and bottles - a valuable resource for those already dispossessed by the throttles of gentrification in the city. This is one of many recycling centers shut down at the expense of homeless populations. Recycling is now done by Recology, a private program.
+
+#HOWARD STREET
+```
+L.marker([37.7832684,-122.4027358]).actions.addRemove(S.map)
+- center: [37.7832684,-122.4027358]
+- zoom: 14
+```
+Howard Street Closure
+![Howard Street Closure](http://adamhonigdotcom.files.wordpress.com/2014/10/moscone-west.jpg)
+
+Every autumn, San Franciscans can count on being locked out of Howard Street for software company conventions including Oracle and Salesforce.  As tents and turfed playgrounds cover the street for the meeting, downtown is [off limits for San Franciscans](http://www.sfgate.com/bayarea/article/Are-big-S-F-conventions-like-OpenWorld-worth-all-5794960.php).  The conventions also gate off areas of Treasure Island, Civic Center and Yerba Buena Park for the associated parties and events. Although City officials say that the conventions bring  benefits to San Francisco, the actual payment for the use of the street is [unknown](http://www.sfgate.com/bayarea/article/Oracle-OpenWorld-to-shut-Howard-at-Moscone-Center-3301381.php). 
+
+
+#16TH STREET BART PLAZA
+```
+L.marker([37.765062,-122.419694]).actions.addRemove(S.map)
+- center: [37.765062,-122.419694]
+- zoom: 14
+```
+16th Street and South Van Ness
+![16th Street BART Plaza](http://i1.wp.com/48hillsonline.org/wp-content/uploads/2014/03/48hills16missioncops.jpg)
+
+Maximus LLC, the developer behind the proposed [16th & Mission Plaza Condo in San Francisco](http://1979mission.com/planning/), is poised to profit upwards of 1 million dollars per unit for their 351-unit development, a staggering sum totaling over a third of a billion dollars. This massive, multi-story project would transform the neighborhood around 16th & Mission, including depriving the nearby Marshall Elementary School of sunlight for most of the year. This development would attract and accommodate increasingly richer and whiter populace in the Mission, accelerating the wholesale displacement of those who don't stand to benefit from the on-going tech-industry-led “boom.” [An excellent opinion piece by Joe Fitzgerald](http://www.sfexaminer.com/sanfrancisco/on-guard-why-the-neighborhood-is-right-to-fear-the-monster-in-the-mission/Content?oid=2922966) covers this issue. Also see recent & ongoing Street Sheet coverage of police attempting to criminalize Food Not Bombs for serving free food in the plaza.
+
+
+#POWELL STREET BART STATION
+```
+L.marker([37.785114,-122.406699]).actions.addRemove(S.map)
+- center: [37.785114,-122.406699]
+- zoom: 14
+```
+Powell and Market
+![Powell Street BART Station](http://ww1.hdnux.com/photos/33/11/61/7117924/11/920x920.jpg)
+
+Read [here about action taken by the Coalition on Homelessness to fight for the right to sleep in the Powell Street BART station, which is also being “cleaned up”.](http://www.sfgate.com/bayarea/article/Homeless-protest-BART-no-sleeping-rules-5880543.php_)
+
+#DAGGET STREET
+```
+L.marker([37.7670742,-122.3957529]).actions.addRemove(S.map)
+- center: [37.7670742,-122.3957529]
+- zoom: 14
+```
+Daggett Street
+
+![Daggett Street](http://www.sfartscommission.org/pubartcollection/wp-content/uploads/2012/06/Daggett_plan1.jpg)
+
+Daggett Street is already being erased off the City map to become a [condo park](http://www.dbarchitect.com/project_detail/99/EQR%20Potrero.html), with the upkeep paid for by future residents.  This street was given to a developer to improve as a park on condo property in exchange for millions off of their development fees.  Future residents will pay for upkeep and security through HOA fees.  The well-connected developer will walk off with the profits.
+
+#CIVIC CENTER PLAZA
+```
+L.marker([37.7794977,-122.4176117]).actions.addRemove(S.map)
+- center: [37.7794977,-122.4176117]
+- zoom: 14
+```
+
+Civic Center Plaza
+![Civic Center Plaza](http://www.sanfranciscodays.com/photos/large/civic-center-trees.jpg)
+
+
+Street Sheet has reported that the Civic Center & UN Plaza were rezoned in 2014 as parks, so as to allow police to ticket people who rest, sleep, and eat there.
+
+Furthermore, the Civic Center is gated off and rented out for private events and corporate parties more and more frequently. The Salesforce party (which included a cocktail reception inside City Hall) in 2014  was alleged to have impacted voter turnout. On October 14, 2014, Larry Bush wrote  to SF City Attorney, Dennis Herrera, "By denying access to City Hall, those wishing to cast early ballots are unable to enter and cast a ballot. The only alternative, particularly for those of us who are disabled, is to pay to park in a lot or else park too far away to walk back to City Hall. As the ACLU notes in its review of voter suppression laws and efforts around the nation, 'States across the country are passing measures that make it harder and harder for Americans – particularly African-Americans, the elderly, students and people with disabilities – to exercise their fundamental right to cast a ballot.'”
+
+In 2014, the Ron Conway Family and Salesforce Foundation closed Civic Center for days in preparation of [this event](https://give.theconcertforkids.com/theconcertforkids/#details), which included an after party with MC Hammer and Will.i.am.   
+
+
+
+
+#CITY HALL
+```
+L.marker([37.779318,-122.41914]).actions.addRemove(S.map)
+- center: [37.779318,-122.41914]
+- zoom: 14
+```
+City Hall
+![City Hall](https://static1.squarespace.com/static/52b7d7a6e4b0b3e376ac8ea2/t/5588de1fe4b0834cb3309ec1/1435033121032/City+Hall+closed+at+Black+Lives+Matter+Protest?format=1500w)
+
+This picture was taken a few minutes after the police cleared the public from City Hall and the Board of Supervisor’s meeting was on April 14, 2015  #Black Lives Matter
+
+#MID-MARKET SIDEWALKS
+
+Mid Market Sidewalks
+```
+L.marker([37.7787235,-122.4147796]).actions.addRemove(S.map)
+- center: [37.7787235,-122.4147796]
+- zoom: 14
+```
+![Mid Market Sidewalks](http://america.aljazeera.com/content/ajam/multimedia/photo-gallery/2014/2/washing-san-franciscoshomelessaway/_jcr_content/slideShowImages/slide2/image.adapt.960.high.sf_homeless_04a.jpg)
+
+The Department of Public Works has aided the gentrification of neighborhoods with various "clean up" and "blight reduction" programs over the years. The clean-up program in the [Central Market Tenderloin Payroll Expense Tax Exclusion Area](http://oewd.org/Central_Market_Tax_Credit.aspx), better known as the [Twitter Tax Break](http://www.bloomberg.com/news/2014-04-03/twitter-tax-break-is-target-in-san-francisco-income-war.html) neighborhood, targets the homeless and vulnerable populations in the area.
+ 
+The payroll tax exemption area brokered by [Ron Conway](http://www.antievictionmappingproject.net/conway.html) and Mayor Ed Lee allowed Twitter and other tech companies and enormous financial incentive to move into the mid-market area.   In conjunction with the influx of tech corporations, the DPW began a "pilot program" to “manage” sidewalk use and could be seen spraying homeless people in the early morning hours. 
+ 
+As [Al Jazeera reported last year](http://america.aljazeera.com/articles/2014/2/18/san-francisco-tensionbetweenhomelessandsecondtechboomers.html), the cleanings are part of a "pilot program" launched in September to keep streets tidy.  Much like an earlier program in the Tenderloin, in which a DPW worker was seen [spraying](https://www.youtube.com/watch?v=YEyhuegv6Ts&noredirect=1) homeless people, the current program is backed by [area property owners](http://www.central-market.org/) and the corporate interests gifted a gigantic tax break.
+
+[The Civic Center Community Benefit District is a private non-profit agency largely run by property owners and real estate interests such as the Apartment Association](http://sfciviccenter.org/the-cbd/board-of-directors/_)
+
+[They run the “Clean Team” and “Ambassadors” who work daily from 6AM](http://sfciviccenter.org/services/)
+
+They also fund police under administrative code 10B to engage in “quality of life” policing.
+
+#CHANNEL STREET
+```
+L.marker([37.7681648,-122.4008902]).actions.addRemove(S.map)
+- center: [37.7681648,-122.4008902]
+- zoom: 14
+```
+Channel Street
+
+![Channel Street](https://s-media-cache-ak0.pinimg.com/736x/58/0a/ce/580ace96abcce35990502a7dea8d6cb2.jpg)
+
+After purchasing the lot on Berry and Seventh Street, Recology managed to encroach on nearby Channel Street for years, and was apparently allowed to block the street with an illegally erected fence, until neighbors noticed that there was a quiet [plan](https://web.archive.org/web/20111012170655/http://potreroview.net/news10032.html) to grant title of the squatted property to the company (Norcal, at the time). Instead of anyone coming clean for using private property for free all those years, a manipulative “Open Space” Process was initiated and brokered by hired gun, [Joe Boss](http://web.archive.org/web/20100726081007/http://www.potreroview.net/news10393.html) to get the [San Francisco Board of Supervisors](http://www.sfbos.org/ftp/uploadedfiles/bdsupvrs/ordinances09/o0252-09.pdf) to turn over [one of the only publicly owned open spaces in Showplace Square](http://web.archive.org/web/20111012165830/http://potreroview.net/news10274.html) to the company.
+
+At the Showplace Open Square community meetings, Planning staff stated that there were no funds available to improve or acquire open space in San Francisco, and that funds would only be available from developer payments in the future there was no mention of any [Open Space Fund](http://www.bizjournals.com/sanfrancisco/morning_call/2014/07/san-francisco-to-spend-16-million-on-park-sites.html), though one apparently does exist for chosen projects. What was left of the 100 foot wide street -- a public right of way, mentioned to be publicly accessible even in the [2009 ordinance](http://www.sfbos.org/ftp/uploadedfiles/bdsupvrs/ordinances09/o0252-09.pdf) gifting the portion to Recology -- was handily re-fenced and [continues to be used for private companies to park](http://web.archive.org/web/20100725054420/http://www.potreroview.net/news10391.html) with no lease or any payment to the City. Need Open Space? Parking shortage? Affordable Housing shortage? Public Right of Way? Will the land be “gifted” to the developer of [Hundred Hooper](http://www.bizjournals.com/sanfrancisco/blog/real-estate/2015/01/hundred-hooper-campus-sf-soma-development.html)?
+
+#AIRSPACE LEASED BY CALTRANS
+```
+L.marker([37.776439,-122.394323]).actions.addRemove(S.map)
+- center: [37.776439,-122.394323]
+- zoom: 14
+```
+“Airspace” leased by Caltrans
+
+![“Airspace” leased by Caltrans](http://www.dot.ca.gov/dist07/sync/i7/122009/1.jpg)
+
+When freeways were built last century, the properties under them were acquired by the state through eminent domain. In the 1980’s the practice of leasing the “airspace” under freeways was instituted, and that space is auctioned off yearly to parking management companies, Uber and others.  
+
+#EUREKA VALLEY REC CENTER
+```
+L.marker([37.7595796,-122.4365176]).actions.addRemove(S.map)
+- center: [37.7595796,-122.4365176]
+- zoom: 14
+```
+
+![Eureka Valley Rec Center](http://www.ggmg.org/images/playgrounds/eureka_valley4.jpg)
+
+The Eureka Valley Rec Center [used to be a safe space for queer youth to hang out.](http://ebar.com/news/article.php?sec=news&article=5642_) Now it’s a place where you can pay for Latin dance and Zumbatomics lessons. When activists from Queer Economic Equality Now protested, [Ginsburg said](http://missionlocal.org/2011/04/at-the-district-8-town-hall-more-coyotes-than-budget/), “We do not support unstructured, unsupervised use of the space. If queer youth want to participate in activities, we have karate, hip-hop dance, spoken word, Latin dance, Zumbatomics.”
+
+#UNIVERSITY OF CALIFORNIA
+```
+L.marker([37.7627481,-122.457626]).actions.addRemove(S.map)
+- center: [37.7627481,-122.457626]
+- zoom: 14
+```
+![UCSF](https://brm.ucsf.edu/sites/brm.ucsf.edu/files/styles/flexslider_full/public/field/image/slider/Parnassus_aerial_1.jpg?itok=-cfMk_3o)
+
+A Brief History of Privatization of Public Higher Education in California
+
+In 1960, The Donahoe Act, better known as the “Master Plan” for higher education in California, outlined a three branch system comprising of UC, CSU, and California Community colleges which would provide tuition free education to all California residents. The marked increase in social and economic mobility of the post war period would not have been possible without publicly funded access to higher education.
+
+In 1969, the US president convinced the state to relax restriction to the assessment of student “fees”, which up unto this time had been almost non-existent. These fees continued to increase throughout the 70’s, 80’s, and 90’s as the state continued to make cuts to public education.
+
+In 1978, Proposition 13 greatly limited the state’s capacity to raise revenue through property taxes.
+
+In the 1980’s, California invested heavily in the construction of state prisons, increasing the incarcerated population by 500% between 1982 and 2000. This building boom and the cost of maintaining the 23 new prisons constructed at this time further diminished the funds available for education.
+
+In 2008, the UC Regents increased student fees by nearly 40%, prompting protests and occupations at numerous UC campuses where students and workers sought to link student fee hikes and cuts to educational programs with workers struggles and institutional corruption. To address the unrest, the Regents deployed police in full riot gear, a response which has come to be expected at any and all rallies or protests since.
+
+In 2011, the UC formally switched to a tuition-based model, making clear what had long since been in effect. This same year, student tuition finally exceeded the amount of funding received from the state.
+
+Tuition for UC Undergraduates rests at approximately $14,000 annually and is expected to rise another 5 percent in the coming years. Adjusted for inflation, UC students in the 2014-15 academic year paid three times what their peers paid as recently as 1992, and this is without accounting for increases to cost of living, an important consideration when addressing education in the bay area.
+
+The average UC student now leaves school $20,500 in debt, while the average CSU student leaves $18,460 in debt. This statistic alone points to a gaping hole in the fabric of public education because it means our “public” colleges and universities are producing a graduating class each year indentured to the dominant economic model and the production of capital.
+
+Finally, the production of knowledge is not a-political. As public colleges and universities in California increasingly seek funding from private investors (such as Monsanto, British Petroleum, and Bayer, among others),
+it is no surprise that the research done at these institutions works to the benefit of private venture capital. The questions we ask, as academics and as scientists, matter, and ought to reflect needs and the desires of the California public, not the corporate elite.
+
+#THE GENE FRIEND REC CENTER
+```
+L.marker([37.7786417,-122.4062903]).actions.addRemove(S.map)
+- center: [37.7786417,-122.4062903]
+- zoom: 14
+```
+The Gene Friend Rec Center 
+
+![The Gene Friend Rec Center ](http://sfrecpark.org/wp-content/uploads/Gene-Friend-Rec-Center-586x286.jpg)
+
+
+The The Gene Friend Rec Center used to have a free after-school program run by United Playaz for youth in the Tenderloin and SOMA. But in 2009 they were kicked out so Rec and Park could charge for a similar program that was only open to youth ages 6 to 12. Sorry Tenderloin teenagers, go play on the streets or something. What’s the worst that could happen? Eleven organizations formed the [SOMA United Coalition to oppose this change](http://somarec.wordpress.com/about-the-campaign/). Rec and Park ignored them.
+
+#VICTORIA MANALO DRAVES PARK
+```
+L.marker([37.7770166,-122.4059602]).actions.addRemove(S.map)
+- center: [37.7770166,-122.4059602]
+- zoom: 14
+```
+Victoria Manalo Draves Park
+
+![Victoria Manalo Draves Park](http://sfrecpark.org/wp-content/uploads/VictoriaManaloDravesPark-400x286.jpg)
+
+The park opened in 2006. At this [busy 2-acre park located south of Market on Folsom between 6th and 7th Streets](http://sf.curbed.com/archives/2014/03/05/get_to_know_western_somas_victoria_manalo_draves_park.php), the SOMA Youth Collaborative (including United Playaz and Westbay) has organized an informal youth baseball league. Rec and Park didn’t take them seriously until they got a grant to “activate” the park as a baseball diamond. And now Rec and Park says they need to make way for permitted soccer and tech kickball leagues. Sound familiar?
+
+A review on Yelp dated 5/3/2013 notes the park becoming “basically a hobo camp,” suggesting this may be because “the neighborhood is starting to gentrify and the homeless just have nowhere to go,” and noting also that there are times when the park is mysteriously clear of homeless people.
+
+
+#GEORGE STERLING PARK
+```
+L.marker([37.80118,-122.419603]).actions.addRemove(S.map)
+- center: [37.80118,-122.419603]
+- zoom: 14
+```
+George Sterling Park
+
+![George Sterling Park](https://c1.staticflickr.com/7/6148/5917432538_e8122c9023_z.jpg)
+
+2299 Hyde St, right by the famously crooked stretch of Lombard St in Russian Hill. One afternoon in March 2015, a member of the AEMP, Tony, took a one-hour nap in this park during a lull between work. When he woke up, a white guy probably in his 30s confronted him, asking if he was “camping out” in the park, saying local residents are pissed off, etc. He insisted that Tony, “don’t come back.”
+
+
+#HAYES STREET COMMUNITY GARDEN
+```
+L.marker([37.776584,-122.423855]).actions.addRemove(S.map)
+- center: [37.776584,-122.423855]
+- zoom: 14
+```
+Hayes Street Community Garden
+![Hayes Street Community Gardent](https://lh4.googleusercontent.com/-aoYwJORx6Uc/U6H4jz0-LeI/AAAAAAAABzM/-lTWp9o37PA/w1198-h812-no/gardensigns.jpg)
+
+The [Hayes Valley Farm](http://hayesvalleyfarm.tumblr.com/) was initiated as a temporary space in 2008, but nevertheless the 2014 demolition displaced a community that had gathered and grown to with the garden. In 2013 the city issed a Request for Developer Proposals for the two parcels of land that make up the garden. In 2014, eviction notices were posted on the fences of both plots, likely coinciding with developers corroboration with the City’s Office of Economic and Workforce Development, which supervised the sale of the land. As Hoodline reported, the [Market & Octavia Plan was formalized and adopted by the Board of Supervisors in 2008](http://hoodline.com/2014/06/end-of-times-for-hayes-valley-community-garden). "It sets out an extensive framework of objectives and policies to guide the redevelopment of Hayes Valley and its surrounding areas. Fundamental to the current issue is what the Plan says in relation to the 22 parcels of land which were created by the demolition of the Central Freeway, including the two parcels of land that make up the community garden. On this point, the plan is very clear. It states that the City must use those parcels to establish mixed-use, mixed-income, especially low income, housing and other developments. Proceeds from the land sales are designated to be used to support area transportation projects, including construction of Octavia Boulevard, and to  public space and street improvements."
+
+The history of the farm runs deeper. As the Hayes Valley Farm contextualizes, [The Central Freeway north of Market Street was torn down in phases after the 1989 Loma Prieta earthquake.](http://hayesvalleyfarm.tumblr.com/) "The eventual farm site changed ownership from CalTrans to the City of San Francisco during the two decades following the earthquake. A passionate debate over ownership ensued and culminated in a freeway riot, when residents and the Hayes Valley Neighborhood Association demanded that the site not be designated a major thoroughfare. The land was slated for development and divided into Parcels O and P, which the Hayes Valley Neighborhood Association later requested be activated for a community gardening project in the interim. The Office of Economic and Workforce Development (OEWD) worked with the Hayes Valley Neighborhood Association to create a groundbreaking interim-use agreement lease with Hayes Valley Farm. The San Francisco Parks Alliance (SFPA) has provided fiscal sponsorship to Hayes Valley Farm, including facilitation of the farm’s interim-use license agreement with the City.
+
+
+#AIRBNB PROTEST AT FORT MASON aka Detained in a free speech zone
+```
+L.marker([37.806657,-122.43104]).actions.addRemove(S.map)
+- center: [37.806657,-122.43104]
+- zoom: 15
+```
+Fort Mason, Probnb Conference
+![Fort Mason](http://i2.wp.com/48hillsonline.org/wp-content/uploads/2014/11/48hillsairbnbprotestevent-e1416896124908.png)
+
+
+In November 2014 as activists were protesting the impacts of Airbnb on longerm housing stock at the Airbnb conference at Fort Mason, Federal police arrived upon the scene and forced activists to disperse, less they self-kettle into a "free speech zone." [A video of the police incursion can be found here](http://valleywag.gawker.com/airbnb-had-housing-activists-pushed-into-a-free-speech-1662804595).
+
+</script></body></html>
